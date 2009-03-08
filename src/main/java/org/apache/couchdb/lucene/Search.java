@@ -44,8 +44,9 @@ public final class Search {
 			} else {
 				final SearchRequest request = new SearchRequest(line);
 				try {
-					final String result = request.execute(searcher);
-					System.out.println(result);
+					// final String result = request.execute(searcher);
+					// System.out.println(result);
+					request.execute(searcher, System.out);
 				} catch (final Exception e) {
 					System.out.printf("{\"code\":400,\"body\":\"%s\"}\n", StringEscapeUtils.escapeHtml(e.getMessage()));
 				}

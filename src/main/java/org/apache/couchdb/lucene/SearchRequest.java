@@ -3,6 +3,7 @@ package org.apache.couchdb.lucene;
 import static java.lang.Math.min;
 
 import java.io.IOException;
+import java.io.PrintStream;
 
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
@@ -15,6 +16,7 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
+import org.apache.lucene.search.HitCollector;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
@@ -76,6 +78,24 @@ public final class SearchRequest {
 				this.sort = new Sort(sort, !query.optBoolean("asc", true));
 			}
 		}
+	}
+
+	public void execute(final IndexSearcher searcher, final PrintStream out) throws IOException {
+		final HitCollector collector = new HitCollector() {
+
+			private int count = 0;
+
+			@Override
+			public void collect(int doc, float score) {
+				out.printf("{\"doc\":%d,\"score\":%f},", doc, score);
+				out.flush();
+				count++;
+			}
+		};
+
+		out.print("{\"code\":200,\"json\":[");
+		searcher.search(q, collector);
+		out.println("]}");
 	}
 
 	public String execute(final IndexSearcher searcher) throws IOException {
