@@ -5,7 +5,7 @@
   <name>CouchDB Lucene</name>
   <description>Full-text indexing for CouchDB</description>
   <url>http://github.com/rnewson/couchdb-lucene/</url>
-  <version>SNAPSHOT</version>
+  <version>0.1-SNAPSHOT</version>
   <dependencies>
     <dependency>
       <groupId>commons-httpclient</groupId>
@@ -66,6 +66,13 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
+  <distributionManagement>
+    <repository>
+      <id>local.repo</id>
+      <name>Local Repository</name>
+      <url>file:///tmp/m2-repo</url>
+    </repository>
+  </distributionManagement>
   <developers>
     <developer>
       <id>rnewson</id>
