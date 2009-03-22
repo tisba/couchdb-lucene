@@ -1,0 +1,71 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE=1
+
+# Set a locale; currently using default
+export LANG=C
+
+include /usr/share/dpatch/dpatch.make
+
+VERSION=1.4.3
+
+JAVA_HOME=/usr/lib/jvm/java-gcj
+JAVA_LIB=/usr/share/java
+ANT_HOME=/usr/share/ant
+ANT_CLASSPATH=$(JAVA_LIB)/junit.jar:$(JAVA_LIB)/xalan2.jar
+ANT_PROPS=debian/ant.properties
+ANT=ant -propertyfile $(ANT_PROPS)
+
+build: build-stamp
+
+build-stamp: patch-stamp
+	dh_testdir
+	$(ANT) javacc
+	$(ANT) jar-core
+	$(ANT) javadocs
+#	$(ANT) package
+#	$(ANT) test
+	touch build-stamp
+
+clean: unpatch
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp 
+	$(ANT) clean
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+
+	dh_install -pliblucene-java build/lucene-$(VERSION).jar usr/share/java/
+	dh_link -pliblucene-java usr/share/lucene-$(VERSION).jar usr/share/java/lucene.jar
+#	install -m 644 -D build/lucene-$(VERSION).jar build/lucene-demos-$(VERSION).jar $(TEMPDIR)/usr/share/java
+#	install -m 644 -D build/luceneweb.war $(TEMPDIR)/usr/share/liblucene-java
+	mkdir -p debian/liblucene-java-doc/usr/share/doc/liblucene-java-doc/docs
+	cp -r build/docs/api debian/liblucene-java-doc/usr/share/doc/liblucene-java-doc/docs
+
+binary-indep: build install
+
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_installdocs
+	dh_installexamples
+	dh_installmenu
+	dh_installcron
+	dh_installman
+	dh_installinfo
+	dh_installchangelogs
+	dh_link
+	dh_compress
+	dh_fixperms
+	dh_installdeb
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install patch unpatch

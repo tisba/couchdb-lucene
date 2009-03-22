@@ -1,0 +1,14 @@
+Source: libcouchdb-lucene
+Section: text
+Priority: optional
+Maintainer: Robert Newson <robert.newson@gmail.com>
+Build-Depends: debhelper (>= 5), dpatch (>= 1.11)
+Build-Depends-Indep: maven2
+Standards-Version: 3.7.2
+
+Package: liblucene-java
+Architecture: all
+Section: text
+Depends: java5-runtime-headless, couchdb (>= 0.9.0), libcommons-httpclient-java (= 3.1), libcommons-io-java (>= 1.4), libjson-java (>= 2.2.3), liblucene2-java (>= 2.4.0), rhino (>= 1.7R1), tika (>= 0.3)
+Description: full-text search for CouchDB
+ Full-text search for CouchDB.
