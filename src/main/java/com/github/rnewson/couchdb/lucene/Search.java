@@ -26,6 +26,7 @@ import net.sf.json.JSONObject;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexReader.FieldOption;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.TimeoutIndexSearcher;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NIOFSDirectory;
 
@@ -45,7 +46,7 @@ public final class Search {
 					// Open a reader and searcher if index exists.
 					if (IndexReader.indexExists(Config.INDEX_DIR)) {
 						reader = IndexReader.open(NIOFSDirectory.getDirectory(Config.INDEX_DIR), true);
-						searcher = new IndexSearcher(reader);
+						searcher = new TimeoutIndexSearcher(reader, 1000);
 					}
 				}
 
@@ -81,7 +82,7 @@ public final class Search {
 						Log.outlog("Lucene index was updated, reopening searcher.");
 						final IndexReader oldReader = reader;
 						reader = newReader;
-						searcher = new IndexSearcher(reader);
+						searcher = new TimeoutIndexSearcher(reader, 1000);
 						oldReader.close();
 					}
 				}
