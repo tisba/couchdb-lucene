@@ -33,6 +33,19 @@ indexer=/usr/bin/java -jar /path/to/couchdb-lucene*-jar-with-dependencies.jar -i
 _fti = {couch_httpd_external, handle_external_req, <<"fti">>}
 </pre>
 
+<h2>Distributed Search</h2>
+
+If you wish you can also configure couchdb-lucene for distributed search (allowing you to combine the results from multiple couchdb servers).
+
+To do this you must enable remote searching on each couchdb instance and supply a valid "servers=server1,server2,server3" argument when searching.
+
+To configure couchdb-lucene for remote searching add the -remote-port option;
+
+<pre>
+[external]
+fti=/usr/bin/java -jar /path/to/couchdb-lucene*-jar-with-dependencies.jar -search -remote-port 9999
+</pre>
+
 <h1>Indexing Strategy</h1>
 
 <h2>Document Indexing</h2>
@@ -203,7 +216,7 @@ You can perform all types of queries using Lucene's default <a href="http://luce
 <dt>include_docs</dt><dd>whether to include the source docs</dd>
 <dt>stale=ok</dt><dd>If you set the <i>stale</i> option <i>ok</i>, couchdb-lucene may not perform any refreshing on the index. Searches may be faster as Lucene caches important data (especially for sorting). A query without stale=ok will use the latest data committed to the index.</dd>
 <dt>debug</dt><dd>if false, a normal application/json response with results appears. if true, an pretty-printed HTML blob is returned instead.</dd>
-<dt>rewrite</dt><dd>(EXPERT) if true, returns a json response with a rewritten query and term frequencies. This allows correct distributed scoring when combining the results from multiple nodes.</dd>
+<dt>servers</dt><dd>A comma-separated list of couchdb-lucene servers to query.</dd>
 </dl>
 
 <i>All parameters except 'q' are optional.</i>
