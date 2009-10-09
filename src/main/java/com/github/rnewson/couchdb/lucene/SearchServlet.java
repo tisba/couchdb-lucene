@@ -25,13 +25,20 @@ import org.apache.lucene.document.Field;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.queryParser.ParseException;
 import org.apache.lucene.queryParser.QueryParser;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FieldDoc;
+import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.TermRangeQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldDocs;
+import org.apache.lucene.search.WildcardQuery;
 
 import com.github.rnewson.couchdb.lucene.LuceneGateway.SearcherCallback;
 import com.github.rnewson.couchdb.lucene.util.Analyzers;
@@ -92,6 +99,9 @@ public final class SearchServlet extends HttpServlet {
 
                 final JSONObject json = new JSONObject();
                 json.put("q", q.toString());
+                if (debug) {
+                    json.put("plan", toPlan(q));
+                }
                 json.put("etag", etag);
 
                 if (rewrite_query) {
@@ -315,6 +325,70 @@ public final class SearchServlet extends HttpServlet {
             result.add(col);
         }
         return result.toString();
+    }
+
+    /**
+     * Produces a string representation of the query classes used for a query.
+     * 
+     * @param query
+     * @return
+     */
+    private String toPlan(final Query query) {
+        final StringBuilder builder = new StringBuilder(300);
+        toPlan(builder, query);
+        return builder.toString();
+    }
+
+    private void toPlan(final StringBuilder builder, final Query query) {
+        builder.append(query.getClass().getSimpleName());
+        builder.append("(");
+        if (query instanceof TermQuery) {
+            planTermQuery(builder, (TermQuery) query);
+        } else if (query instanceof BooleanQuery) {
+            planBooleanQuery(builder, (BooleanQuery) query);
+        } else if (query instanceof TermRangeQuery) {
+            planTermRangeQuery(builder, (TermRangeQuery) query);
+        } else if (query instanceof PrefixQuery) {
+            planPrefixQuery(builder, (PrefixQuery) query);
+        } else if (query instanceof WildcardQuery) {
+            planWildcardQuery(builder, (WildcardQuery) query);
+        } else if (query instanceof FuzzyQuery) {
+            planFuzzyQuery(builder, (FuzzyQuery)query);
+        }
+        builder.append(",boost=" + query.getBoost() + ")");
+    }
+
+    private void planFuzzyQuery(final StringBuilder builder, final FuzzyQuery query) {
+        builder.append(query.getTerm());
+        builder.append(",prefixLength=");
+        builder.append(query.getPrefixLength());
+        builder.append(",minSimilarity=");
+        builder.append(query.getMinSimilarity());
+    }
+
+    private void planWildcardQuery(final StringBuilder builder, final WildcardQuery query) {
+            builder.append(query.getTerm());
+    }
+
+    private void planPrefixQuery(final StringBuilder builder, final PrefixQuery query) {
+        builder.append(query.getPrefix());
+    }
+
+    private void planTermRangeQuery(final StringBuilder builder, final TermRangeQuery query) {
+        builder.append(query.getLowerTerm());
+        builder.append(" TO ");
+        builder.append(query.getUpperTerm());
+    }
+
+    private void planBooleanQuery(final StringBuilder builder, final BooleanQuery query) {
+        for (final BooleanClause clause : query.getClauses()) {
+            builder.append(clause.getOccur());
+            toPlan(builder, clause.getQuery());
+        }
+    }
+
+    private void planTermQuery(final StringBuilder builder, final TermQuery query) {
+        builder.append(query.getTerm());
     }
 
 }
