@@ -54,8 +54,8 @@ class CouchDBHook
       resp, data = lucene_connection.get("#{request_uri.path}?#{request_uri.query}", request['headers']) 
       data = deflate(data) if use_compression?
 
-      log "couchdb-lucene response: (#{resp.code})"
-      debug "couchdb-lucene response: (#{data})"
+      log "couchdb-lucene response: #{resp.code}"
+      debug "couchdb-lucene response: #{data}"
 
       # building response to couchdb, strip content-encoding
       resp.delete("Content-Encoding")
