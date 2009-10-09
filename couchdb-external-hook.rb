@@ -1,154 +1,164 @@
-#
+#! /usr/bin/ruby
+
 # This is the external process hook script that forwards requests from CouchDB
-# to couchdb-lucene.  It requires the following:
+# to couchdb-lucene. This is a rewrite from the original hook from John Wood.
 #
+# It requires the following:
 # * A Ruby interpreter (http://www.ruby-lang.org/en/downloads/)
 # * The RubyGems package management system (http://docs.rubygems.org/read/chapter/3)
 # * The 'json' ruby gem (sudo gem install json)
+# * couchdb-external-hook.rb should be chmoded executeable
 #
 # == Configuration options
-# couchdb.lucene.host=mymachine.somehost.com - The name of the machine hosting
-#    the couchdb-lucene server (default is localhost)
-# couchdb.lucene.port=1234 - The port the couchdb-lucene is running on
-#    (default is 5985)
-# couchdb.log.dir=/some/log/dir - The directory you wish to use to store the
-#    logs from this script (default is /var/log/couchdb)
+# couchdb.lucene.uri=http://localhost:5985/ - The URI where couchdb-lucene is
+#    running. (default is http://localhost:5985/)
+# couchdb.logdir=/some/log/dir - The directory you wish to use to store the
+#    logs from this script (default is /tmp)
+# couchdb.lucene.compression=true - Use GZIP-Compression to talk with
+#    couchdb-lucene. (default is false)
+# couchdb.lucene.debug=false - Let this hook be more chatty :)
+#    (default is false)
 #
 # == Usage
-# Include the following in your CouchDB local.ini file in the [external] section:
-# fti=/path/to/ruby /usr/lib/couchdb/couchdb-lucene/couchdb-external-hook.rb [options]
-#
-# Example:
-# fti=/path/to/ruby /usr/lib/couchdb/couchdb-lucene/couchdb-external-hook.rb couchdb.log.dir=/some/log/dir couchdb.lucene.port=1234
+# Example configuration in your CouchDB external section:
+# fti=/usr/lib/couchdb/couchdb-lucene/couchdb-external-hook.rb couchdb.lucene.uri=http://localhost:5985/
 #
 # == Author
-# John Wood
-# john_p_wood@yahoo.com
-# http://johnpwood.net
-#
+# Sebastian Cohnen
+# http://twitter.com/tisba
+# http://github.com/tisba
 
+=begin
+  TODO
+  - add support for http-proxies
+  - add test-suite
+=end
 require 'net/http'
+require 'cgi'
+require 'uri'
 require 'zlib'
+
 require 'rubygems'
 require 'json'
 
+class CouchDBHook
+  class << self
+    def dispatch(request)
+      request = JSON.parse(request)
+      request_uri = URI.join(lucene_uri.to_s, query_string(request))
+      log "request to couchdb-lucene: #{request_uri.to_s}"
 
-DEFAULT_LOG_DIR = '/var/log/couchdb/'
-DEFAULT_LUCENE_HOST = 'localhost'
-DEFAULT_LUCENE_PORT = 5985
-LOGFILE = 'couchdb-external-hook.log'
+      # disable gzip compression if requested
+      request['headers'].delete("Accept-Encoding") unless use_compression?
 
+      resp, data = lucene_connection.get("#{request_uri.path}?#{request_uri.query}", request['headers']) 
+      data = deflate(data) if use_compression?
 
-def args
-  @@arg_array ||= begin
-    args = {}
-    ARGV.each do |token|
-      key, value = token.strip.split('=')
-      args[key] = value
+      log "couchdb-lucene response: (#{resp.code})"
+      debug "couchdb-lucene response: (#{data})"
+
+      # building response to couchdb, strip content-encoding
+      resp.delete("Content-Encoding")
+      headers = {}
+      resp.each_capitalized {|k,v| headers[k] = v}
+
+      response = {"code"  => resp.code, "headers" => headers}
+      if resp.content_type =~ /json/
+        response['json'] = data
+      else   
+        response['body'] = data
+      end
+
+      response.to_json
     end
-    args
-  end
-end
 
-def log(message)
-  t = Time.now
-  @@log << t.strftime("%Y-%m-%d %H:%M:%S") + ":#{t.usec}" << " :: " << message << "\n"
-  @@log.flush
-end
+    def query_string(request)
+      # decide, if we want to search or info
+      lucene_query = if request['query']['q'].nil?
+        "/info/"
+      else
+        "/search/"
+      end
 
-def logfile
-  @@logfile ||= begin
-    logdir = args['couchdb.log.dir'] || DEFAULT_LOG_DIR
-    logdir << '/' unless logdir =~ /\/$/
-    logdir + LOGFILE
-  end
-end
+      # drop _fti from path, and rebuild
+      request['path'].delete_at(1)
+      lucene_query << request['path'].join('/') << "?"
 
-def respond_with_error(code, message)
-  puts ({"code" => code, "body" => message}).to_json
-  STDOUT.flush
-  true
-end
+      # rebuild rest of the query
+      request['query'].each do |name, value|
+        lucene_query << "#{name}=#{CGI::escape(value)}&"
+      end
+      lucene_query.chop!   
 
-def parse_path(path)
-  [path[0], path[2], path[3]]
-end
+      lucene_query
+    end
 
-def build_query_string(input_hash)
-  couch_query = input_hash['query']
-  if couch_query.nil?
-    respond_with_error(400, "No query found in request.") and return
-  end
-
-  database, design_doc, view = parse_path(input_hash['path'])
-  if database.nil? ||design_doc.nil? || view.nil?
-    respond_with_error(400, 'Path must contain datbase name, design doc name, and view name.') and return
-  end
-
-  command = couch_query['q'].nil? ? 'info' : 'search' 
-  lucene_query = "/#{command}/#{database}/#{design_doc}/#{view}?"
-  couch_query.each do |name, value|
-    lucene_query << "#{name}=#{value}&"
-  end
-  lucene_query.sub!(/[&?]$/, '')    
-
-  log "couchdb-lucene query: #{lucene_query}"
-  lucene_query
-end
-
-def send_query_to_couchdb_lucene(input_hash, query_string)
-  @@host ||=  args['couchdb.lucene.host'] || DEFAULT_LUCENE_HOST
-  @@port ||= (args['couchdb.lucene.port'] || DEFAULT_LUCENE_PORT).to_i
-
-  connection = Net::HTTP.new(@@host, @@port)
-  resp, data = connection.get(query_string, input_hash['headers'])
-
-  data = inflate(data)
-  resp.delete("Content-Encoding")
-
-  log "couchdb-lucene response: (#{resp.code}) #{data}"
-
-  if resp.code.to_i == 200
-    headers = {}
-    resp.each_capitalized {|k,v| headers[k] = v}
-
-    response = {"code" => resp.code, "headers" => headers}
-    resp.content_type =~ /json/ ? response['json'] = data : response['body'] = data
+    def log(message)
+      t = Time.now
+      logfile << "#{t.strftime("%Y-%m-%d %H:%M:%S")}:#{t.usec} :: #{message} \n"
+      logfile.flush
+    end
     
-    log "Response to CouchDB: #{response.to_json}"
-    puts response.to_json
-    STDOUT.flush
-  else
-    respond_with_error(resp.code, resp.message)
+    def debug(message)
+      log(message) if debug?
+    end
+    
+
+    def lucene_connection
+      @connection ||= Net::HTTP.new(lucene_uri.host, lucene_uri.port)
+    end
+
+    def logdir
+      @logdir ||= (args['couchdb.lucene.logdir'] || '/tmp')
+    end
+    
+    def lucene_uri
+      @lucene_uri ||= URI.parse(args['couchdb.lucene.uri'] || 'http://localhost:5985/')
+    end
+
+    def use_compression?
+      @compression ||= (args['couchdb.lucene.compression'] == 'true')
+    end
+
+    def debug?
+      @debug ||= (args['couchdb.lucene.debug'] == 'true')      
+    end
+
+    def logfile
+      @log ||= File.new(File.join([logdir, args['couchdb.lucene.logfile'] || 'couchdb-external-hook.log']), 'a')
+    end
+    
+    def args
+      @arg_array ||= begin
+        args = {}
+        ARGV.each do |token|
+          key, value = token.strip.split('=')
+          args[key] = value
+        end
+        args
+      end
+    end
+    
+    def deflate(string)
+      gz = Zlib::GzipReader.new(StringIO.new(string))
+      gz.read
+    rescue
+      string
+    end
   end
-rescue Exception => e
-  log "Error encountered when sending request to couchdb-lucene: #{e.inspect}"
-  respond_with_error(500, "Unexpected error when sending request to couchdb-lucene.")
 end
 
-def inflate(string)
-  gz = Zlib::GzipReader.new(StringIO.new(string))
-  gz.read
-rescue
-  string
-end
+# Say hello!
+CouchDBHook.log "Using couchdb-lucene at #{CouchDBHook.lucene_uri}"
+CouchDBHook.log "Logfile: #{CouchDBHook.logfile.path} (DEBUG = #{CouchDBHook.debug? ? 'yes':'no'})"
+CouchDBHook.log "Using compression to talk with couchdb-lucene" if CouchDBHook.use_compression?
+CouchDBHook.log "Searcher started. Waiting for incoming requests..."
 
-def execute_query(line)
-  log "Request from CouchDB: #{line}"
-  input_hash = JSON.parse(line)
-  query_string = build_query_string(input_hash)
-  send_query_to_couchdb_lucene(input_hash, query_string) unless query_string.nil?
-end
-
-
-#
-# Entry point
-#
-File.open(logfile, 'a') do |log|
-  @@log = log
-  log "Searcher started."
-  
-  while (line = STDIN.gets)
-    execute_query(line)
-  end
+# Wait for requests from couchdb
+while (line = STDIN.gets)
+  CouchDBHook.debug "request from couchdb: #{line}"
+  out = CouchDBHook.dispatch(line)
+  CouchDBHook.debug "resopnse to couchdb: #{out}"
+  puts out
+  STDOUT.flush
 end
