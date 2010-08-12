@@ -385,7 +385,7 @@ The following parameters can be passed for more sophisticated searches;
 <dt>stale=ok</dt><dd>If you set the <i>stale</i> option to <i>ok</i>, couchdb-lucene will not block if the index is not up to date and it will immediately return results. Therefore searches may be faster as Lucene caches important data (especially for sorting). A query without stale=ok will block and use the latest data committed to the index. Unlike CouchDBs stale=ok option for views, couchdb-lucene will trigger an index update unless one is already running.</dd>
 </dl>
 
-<i>All parameters except 'q' are optional.</i>
+<i>All parameters except 'q' are optional for searching. If you omit the 'q' parameter, you'll get information about the index (see below).</i>
 
 <h2>Special Fields</h2>
 
@@ -542,6 +542,8 @@ returns;
 "fields":["default","number"],"last_modified":"1263066382000",
 "optimized":true,"ref_count":2}
 </pre>
+
+Note that this call will be blocking until the index is up to date. You can pass <i>stale=ok</i> to make this call non-blocking by telling couchdb-lucene not to wait for the index to catch up.
 
 <h1>Index Maintenance</h1>
 
